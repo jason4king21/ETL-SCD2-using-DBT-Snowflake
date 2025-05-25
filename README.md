@@ -5,7 +5,7 @@ This project showcases a modular ETL pipeline that loads `.csv` files from AWS S
 ---
 
 ## 🧩 Architecture Overview
-![SCD2 Pipeline Diagram](docs/architecture.png)
+![SCD2 Pipeline Diagram](diagrams/architecture.png)
 
 1. **Raw Data Upload**  
    - Files are dropped into an S3 bucket  
