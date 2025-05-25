@@ -1,92 +1,122 @@
-# 📊 ETL with Slowly Changing Dimension Type 1 (SCD1) using Snowflake Tasks, Streams & Stored Procedure
+# 🧱 ETL with Slowly Changing Dimension Type 2 (SCD2) using DBT & Snowflake
 
-This project demonstrates an automated ETL pipeline that loads `.csv` files into Snowflake from an Amazon S3 bucket, and processes updates using **SCD Type 1** logic via **Snowflake Tasks, Streams, and Stored Procedures**.
+This project showcases a modular ETL pipeline that loads `.csv` files from AWS S3 into Snowflake and applies **SCD Type 2** logic using **DBT models and Snapshots**, capturing historical changes across dimension tables.
 
 ---
 
 ## 🧩 Architecture Overview
-![Real-Time Streaming Pipeline](diagrams/architecture.png)
+![SCD2 Pipeline Diagram](diagrams/architecture.png)
 
-1. **Anaconda Python Environment**  
-   - Reads a `.csv` file from local storage  
-   - Uploads it to S3 using `boto3`  
-   - Uses a `.yml` config file to securely manage AWS Secrets via Anaconda
+1. **Raw Data Upload**  
+   - Files are dropped into an S3 bucket  
+   - Managed using a Python script or automated service
 
-2. **Amazon S3**  
-   - Serves as the landing zone for raw CSV files
+2. **AWS PrivateLink**  
+   - Securely routes S3 traffic into Snowflake
 
-3. **Snowflake Configuration**
-   - **External Stage**: Points to the S3 bucket
-   - **Stream**: Tracks new rows in a staging table
-   - **Task**: Executes every minute to check for new files
-   - **Stored Procedure**: Implements SCD Type 1 merge logic (insert or update)
+3. **Snowflake Configuration**  
+   - **External Stage**: Reads files from S3  
+   - **Bronze Layer**: Raw data loaded via `COPY INTO`  
+   - **Silver Layer**: Cleaned and modeled data  
+   - **Snapshots**: Track changes across time using surrogate keys and date ranges  
+   - **Gold Layer**: Final reporting views
 
 ---
 
 ## 🔧 Tech Stack
 
-- **Python (Anaconda)** – For uploading files and managing AWS credentials
-- **Amazon S3** – Storage layer for raw data
+- **Python** – Upload `.csv` files to S3
+- **Amazon S3** – Stores raw input files
 - **Snowflake**  
-  - **Stages** – Reference S3 objects  
-  - **Streams** – Change data capture  
-  - **Tasks** – Scheduled execution  
-  - **Stored Procedures** – SCD1 logic in SQL/JavaScript
+  - **External Stage** – Reads files from S3  
+  - **Warehouse** – Performs transformations and queries
+- **DBT (Data Build Tool)**  
+  - **Models** – Define Bronze, Silver, and Gold layers  
+  - **Snapshots** – Implement SCD Type 2 tracking logic  
+  - **Tests** – Validate assumptions and data integrity
 
 ---
 
 ## 📂 Repository Structure
+
 ```
-ETL-SCD1-Snowflake-Tasks-Streams-StoredProcedures/
+ETL-SCD2-USING-DBT-SNOWFLAKE/
 │
-├── README.md                          → Project overview and setup instructions
-├── .gitignore                         → Specifies files and directories to ignore in version control
+├── analyses/ → (Optional) Directory for ad hoc SQL analysis or documentation
 ├── diagrams/
-│   ├── architecture.png               → Visual representation of the pipeline flow
-│   └── Diagram Generator/
-│       └── architecture.py            → Python script to generate the architecture diagram
+│ ├── Diagram Generator/
+│ │ └── architecture.py → Python script to generate the architecture diagram
+│ └── architecture.png → Visual representation of the data pipeline
+│
+├── macros/
+│ ├── copy_into_snowflake.sql → Custom macro to load data into Snowflake tables
+│ ├── generate_schema_name.sql → Dynamically sets schema names based on environment
+│ └── query_tag.sql → Tags queries for better observability and debugging
+│
+├── models/
+│ ├── gold/
+│ │ └── product_view.sql → Final business layer with cleaned, historical data
+│ └── silver/
+│ ├── schema.yml → Describes metadata and tests for silver models
+│ └── transform_product_load.sql → Applies SCD2 transformations to raw data
+│
 ├── python/
-│   └── UploadFileToS3.py              → Python script to upload CSV file to Amazon S3
+│ └── local_to_aws_s3.py → Python script to upload data from local to AWS S3
+│
+├── seeds/
+│ └── Product_Dim.csv → Seed file used to populate static/starter dimension data
+│
+├── snapshots/
+│ └── product_snapshot.sql → Snapshot definition for SCD2 logic in DBT
+│
 ├── snowflake/
-│   ├── SnowflakeSetup.sql             → Creates external stage in Snowflake
-│   ├── SnowpipeSetup.sql              → Defines Snowpipe for auto-ingestion from S3
-│   ├── StreamSetup.sql                → Defines stream on staging table for change tracking
-│   └── TaskAndStoredProcSetup.sql     → Creates Snowflake task and stored procedure for SCD1 merge
+│ └── SnowflakeSetup.sql → Creates stage, tables, and roles in Snowflake
+│
+├── target/ → DBT-generated compiled code and artifacts (ignored from version control)
+│
 ├── tests/
-    └── [test files]                   → Placeholder directory for unit tests or validation scripts
+│ ├── Product_Dim_1.csv → Test input file for verifying snapshot logic
+│ └── Product_Dim.csv → Another variant of test dimension data
+│
+├── .gitignore → Files and folders to exclude from git tracking
+├── dbt_project.yml → Core DBT project configuration file
+├── package-lock.yml → Lockfile for consistent package installations
+├── packages.yml → DBT package dependencies
+└── README.md → Project documentation and setup instructions
 ```
 
 ---
 
 ## ▶️ How It Works
 
-1. 🐍 Run the Python script to upload `customer_full_data.csv` to S3:
-   ```bash
-   python UploadFileToS3.py
+1. ☁️ Upload `Product_Dim.csv` to the S3 bucket  
+   (optionally via Python, UI, or automation)
 
-2. 🏗️ In Snowflake:
-    - Create an external stage to the S3 bucket
-    - Create a stream to track staging table changes
-    - Create a task to run every minute
-    - Task calls a Stored Procedure to perform SCD Type 1 updates
+2. ❄️ In Snowflake:
+    - Create a stage and load the file to the Bronze table using `COPY INTO`
 
-3. 🧠 The Stored Procedure logic:
-    - Inserts new rows
-    - Updates existing records based on a business key (e.g., customer_id)
+3. 🧱 With DBT:
+    - Define transformation models across Bronze, Silver, and Gold layers
+    - Use `dbt snapshot` to track historical changes in the Silver layer
+
+4. 🔁 DBT Snapshot Logic:
+    - Creates new records when non-key fields change
+    - Maintains history with `valid_from`, `valid_to`, and `is_current` flags
 
 ---
 
 ## ✅ Highlights
 
-- Real-world use of Snowflake Tasks, Streams, and Stored Procedures
-- Secure AWS credential management using .yml
-- SCD1 logic for maintaining clean and updated dimension tables
+- Modular, layered architecture (Bronze → Silver → Gold)
+- Real-world implementation of DBT Snapshots for SCD2
+- Secure ingestion from AWS S3 using Snowflake stages
+- Analytical reporting support via clean Gold layer views
 
 ---
 
 ## 🏷️ Tags & Topics
 ```
 Use these hashtags when sharing the project:
-#DataEngineering #Snowflake #SCD1 #ETL #Python #AWS #S3 #StoredProcedure #Tasks #Streams #DataPipeline #Anaconda #CloudData
+#DataEngineering #Snowflake #SCD2 #ETL #DBT #AWS #S3 #Snapshots #DataModeling #Analytics #DataPipeline #CloudWarehouse
 
 ```
